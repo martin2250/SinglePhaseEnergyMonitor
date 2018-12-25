@@ -58,6 +58,8 @@ void loop(void)
 	static unsigned long last_spi_read_time = millis();
 	static unsigned long last_uptime_update = millis();
 
+	unsigned long loop_start = micros();
+
 	httpServer.handleClient();
 
 	unsigned long now = millis();
@@ -74,4 +76,9 @@ void loop(void)
 		uptime_seconds++;
 		last_uptime_update += 1000;
 	}
+
+	unsigned long loop_duration_ul = micros() - loop_start;
+
+	loop_duration = 0.99 * loop_duration + 0.01 * loop_duration_ul;
+	loop_duration_max = max(loop_duration_max, (double)loop_duration_ul);
 }

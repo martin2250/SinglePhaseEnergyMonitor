@@ -24,6 +24,8 @@ void handleStatus()
 	message_buffer += preable + "free_heap_kbytes value=" + String(((float)ESP.getFreeHeap())/1024, 3) + "\n";
 	message_buffer += preable + "logic_voltage value=" + String(((float)ESP.getVcc())/1000, 2) + "\n";
 	message_buffer += preable + "uptime value=" + String(uptime_seconds) + "\n";
+	message_buffer += preable + "loop_duration_avg_us value=" + String(loop_duration, 0) + "\n";
+	message_buffer += preable + "loop_duration_max_us value=" + String(loop_duration_max, 0) + "\n";
 
 	httpServer.send(200, "text/plain; version=0.0.4", message_buffer);
 }
