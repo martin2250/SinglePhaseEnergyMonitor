@@ -588,17 +588,6 @@ Wire Wire Line
 Wire Wire Line
 	3950 5050 4100 5050
 $Comp
-L Device:R R1
-U 1 1 5C21BB38
-P 2800 2650
-F 0 "R1" V 3000 2650 50  0000 C CNN
-F 1 "0R" V 2900 2650 50  0000 C CNN
-F 2 "Resistor_SMD:R_1206_3216Metric" V 2730 2650 50  0001 C CNN
-F 3 "~" H 2800 2650 50  0001 C CNN
-	1    2800 2650
-	-1   0    0    1   
-$EndComp
-$Comp
 L power:GND #PWR0119
 U 1 1 5C21F9D9
 P 2800 2850
@@ -609,8 +598,6 @@ F 3 "" H 2800 2850 50  0001 C CNN
 	1    2800 2850
 	1    0    0    -1  
 $EndComp
-Wire Wire Line
-	2800 2850 2800 2800
 $Comp
 L RF_Module:ESP-07 U1
 U 1 1 5C226517
@@ -869,8 +856,6 @@ Text Label 2500 1900 0    50   ~ 0
 Line_2
 Wire Wire Line
 	2450 2450 2800 2450
-Wire Wire Line
-	2800 2450 2800 2500
 Connection ~ 2450 2450
 Wire Wire Line
 	2450 2450 2450 2300
@@ -1362,10 +1347,8 @@ Wire Wire Line
 	8200 3750 8200 4800
 Wire Wire Line
 	8300 3550 8300 4800
-Text GLabel 8400 3750 2    50   Input ~ 0
+Text GLabel 8650 3650 2    50   Input ~ 0
 CS
-Wire Wire Line
-	8400 3750 8200 3750
 Connection ~ 8200 3750
 Wire Wire Line
 	8000 3750 8200 3750
@@ -1437,4 +1420,28 @@ F 3 "~" H 3800 3200 50  0001 C CNN
 	1    3800 3200
 	0    -1   -1   0   
 $EndComp
+Wire Wire Line
+	2800 2450 2800 2850
+$Comp
+L Connector_Generic:Conn_01x01 J5
+U 1 1 5C239DDC
+P 8850 3800
+F 0 "J5" H 8930 3842 50  0000 L CNN
+F 1 "Conn_01x01" H 8930 3751 50  0000 L CNN
+F 2 "Connector_Pin:Pin_D0.9mm_L10.0mm_W2.4mm_FlatFork" H 8850 3800 50  0001 C CNN
+F 3 "~" H 8850 3800 50  0001 C CNN
+	1    8850 3800
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	8650 3650 8550 3650
+Wire Wire Line
+	8550 3650 8550 3750
+Wire Wire Line
+	8550 3800 8650 3800
+Wire Wire Line
+	8200 3750 8550 3750
+Connection ~ 8550 3750
+Wire Wire Line
+	8550 3750 8550 3800
 $EndSCHEMATC
