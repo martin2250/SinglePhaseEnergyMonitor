@@ -27,12 +27,12 @@ struct Metric
 };
 
 struct Metric metrics[] = {
-	{"voltage_rms",    Urms,   1./100,  LSB_UNSIGNED,   2, true,  false},
+	{"voltage_rms",    Urms,   1./100,  LSB_UNSIGNED,   3, true,  false},
 	{"current_rms",    Irms,   1./1000, LSB_UNSIGNED,   5, true,  true},
 
-	{"power_active",   Pmean,  1./1000, LSB_COMPLEMENT, 5, true,  true},
-	{"power_reactive", Qmean,  1./1000, LSB_COMPLEMENT, 5, false, true},
-	{"power_apparent", Smean,  1./1000, LSB_COMPLEMENT, 5, false, true},
+	{"power_active",   Pmean,  1./1000, LSB_COMPLEMENT, 6, true,  true},
+	{"power_reactive", Qmean,  1./1000, LSB_COMPLEMENT, 6, false, true},
+	{"power_apparent", Smean,  1./1000, LSB_COMPLEMENT, 6, false, true},
 
 	{"power_factor",   PowerF, 1./1000, NOLSB_SIGNED,   3, true,  false},
 	{"phase_angle",    Pangle, 1./10,   NOLSB_SIGNED,   2, false, false},

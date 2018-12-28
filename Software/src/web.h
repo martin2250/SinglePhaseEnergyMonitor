@@ -2,4 +2,3 @@
 void initWeb();
 extern ESP8266WebServer httpServer;
 extern String message_buffer;
-extern const char* host;

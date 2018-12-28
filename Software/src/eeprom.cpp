@@ -74,8 +74,6 @@ void eeprom_read(uint16_t address, uint8_t *buffer, uint8_t length)
 	Wire.endTransmission(false);
 	Wire.requestFrom((uint8_t)EEPROM_ADDRESS, length);
 
-	uint32_t value_unsigned = 0;
-
 	while(Wire.available())
 		*(buffer++) = Wire.read();
 }
