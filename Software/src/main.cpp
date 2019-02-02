@@ -33,18 +33,28 @@ void setup(void)
 
 	Serial.println("Initializing WiFi");
 
+	rst_info *resetInfo = ESP.getResetInfoPtr();
+
 	WiFi.persistent(false);
 	WiFi.mode(WIFI_OFF);
 	delay(2000);
-	WiFi.mode(WIFI_AP_STA);
+
+	if(resetInfo->reason == REASON_EXT_SYS_RST)
+		WiFi.mode(WIFI_AP_STA);
+	else
+		WiFi.mode(WIFI_STA);
+
 	WiFi.disconnect(true);
 	delay(1000);
 	if((strlen(setting_wifi_ssid) > 1) && (strlen(setting_wifi_psk) >= 8))
 		WiFi.begin(setting_wifi_ssid, setting_wifi_psk);
 	(void)wifi_station_dhcpc_start();
 
-	WiFi.softAPConfig(apip, apgateway, apsubnet);
-	WiFi.softAP(ssid_ap, password_ap);
+	if(resetInfo->reason == REASON_EXT_SYS_RST)
+	{
+		WiFi.softAPConfig(apip, apgateway, apsubnet);
+		WiFi.softAP(ssid_ap, password_ap);
+	}
 
 	WiFi.hostname(setting_wifi_hostname);
 
