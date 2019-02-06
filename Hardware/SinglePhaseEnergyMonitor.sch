@@ -1346,7 +1346,7 @@ Wire Wire Line
 Wire Wire Line
 	8200 3750 8200 4800
 Wire Wire Line
-	8300 3550 8300 4800
+	8300 3550 8300 3800
 Text GLabel 8650 3650 2    50   Input ~ 0
 CS
 Connection ~ 8200 3750
@@ -1438,10 +1438,10 @@ Wire Wire Line
 Wire Wire Line
 	8550 3650 8550 3750
 Wire Wire Line
-	8550 3800 8650 3800
-Wire Wire Line
 	8200 3750 8550 3750
-Connection ~ 8550 3750
 Wire Wire Line
-	8550 3750 8550 3800
+	8300 3800 8650 3800
+Connection ~ 8300 3800
+Wire Wire Line
+	8300 3800 8300 4800
 $EndSCHEMATC
