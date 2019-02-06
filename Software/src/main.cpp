@@ -10,14 +10,14 @@
 #include "globals.h"
 
 extern "C" {
-	#include "user_interface.h"
+#include "user_interface.h"
 }
 
 ADC_MODE(ADC_VCC);
 
-const IPAddress apsubnet(255,255,255,0);
-const IPAddress apip(192,168,4,1);
-const IPAddress apgateway(192,168,4,1);
+const IPAddress apsubnet(255, 255, 255, 0);
+const IPAddress apip(192, 168, 4, 1);
+const IPAddress apgateway(192, 168, 4, 1);
 
 void setup(void)
 {
@@ -33,25 +33,31 @@ void setup(void)
 
 	Serial.println("Initializing WiFi");
 
+	bool enableAP = false;
+
 	rst_info *resetInfo = ESP.getResetInfoPtr();
+	if (resetInfo->reason == REASON_EXT_SYS_RST) {
+		ESP.rtcUserMemoryRead(0, (uint32_t *)&enableAP, sizeof(enableAP));
+		enableAP = !enableAP;
+	}
+	ESP.rtcUserMemoryWrite(0, (uint32_t *)&enableAP, sizeof(enableAP));
 
 	WiFi.persistent(false);
 	WiFi.mode(WIFI_OFF);
 	delay(2000);
 
-	if(resetInfo->reason == REASON_EXT_SYS_RST)
+	if (enableAP)
 		WiFi.mode(WIFI_AP_STA);
 	else
 		WiFi.mode(WIFI_STA);
 
 	WiFi.disconnect(true);
 	delay(1000);
-	if((strlen(setting_wifi_ssid) > 1) && (strlen(setting_wifi_psk) >= 8))
+	if ((strlen(setting_wifi_ssid) > 1) && (strlen(setting_wifi_psk) >= 8))
 		WiFi.begin(setting_wifi_ssid, setting_wifi_psk);
 	(void)wifi_station_dhcpc_start();
 
-	if(resetInfo->reason == REASON_EXT_SYS_RST)
-	{
+	if (enableAP) {
 		WiFi.softAPConfig(apip, apgateway, apsubnet);
 		WiFi.softAP(ssid_ap, password_ap);
 	}
@@ -74,15 +80,13 @@ void loop(void)
 
 	unsigned long now = millis();
 
-	if((now - last_spi_read_time) > SAMPLE_INTERVAL_MS)
-	{
+	if ((now - last_spi_read_time) > SAMPLE_INTERVAL_MS) {
 		last_spi_read_time += SAMPLE_INTERVAL_MS;
 
 		readMetrics();
 	}
 
-	if((now - last_uptime_update) > 1000)
-	{
+	if ((now - last_uptime_update) > 1000) {
 		uptime_seconds++;
 		last_uptime_update += 1000;
 	}
