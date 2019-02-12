@@ -57,11 +57,16 @@ char setting_wifi_ssid[MAX_STRING_LENGTH];
 char setting_wifi_psk[MAX_STRING_LENGTH];
 char setting_wifi_hostname[MAX_STRING_LENGTH];
 
+char setting_push_host[MAX_STRING_LENGTH];
+int32_t setting_push_enable;
+int32_t setting_push_port;
+
 char setting_metric_name_default[MAX_STRING_LENGTH] = "singlephase";
 char setting_location_tag_default[MAX_STRING_LENGTH] = "unknown";
 char setting_wifi_ssid_default[MAX_STRING_LENGTH] = "";
 char setting_wifi_psk_default[MAX_STRING_LENGTH] = "";
 char setting_wifi_hostname_default[MAX_STRING_LENGTH] = "singlephasemeter";
+char setting_push_host_default[MAX_STRING_LENGTH] = "";
 
 struct Setting settings[] = {
 	{0x00, "buff",  "sample buffer size (0.5s interval)",  INTEGER, SAMPLE_COUNT_MAX, 1,       {1},     &setting_sample_count},
@@ -88,6 +93,10 @@ struct Setting settings[] = {
 	{0xB0, "ssid", "WIFI SSID",             STRING, MAX_STRING_LENGTH - 1, 0, {.as_str = setting_wifi_ssid_default},     setting_wifi_ssid},
 	{0xB8, "psk",  "WIFI PSK (hidden)",     STRING, MAX_STRING_LENGTH - 1, 0, {.as_str = setting_wifi_psk_default},      setting_wifi_psk},
 	{0xC0, "host", "hostname",              STRING, MAX_STRING_LENGTH - 1, 2, {.as_str = setting_wifi_hostname_default}, setting_wifi_hostname},
+
+	{ 0x40, "pse", "metric push enable",    INTEGER, 1,			           0, {0}                                , &setting_push_enable},
+	{ 0xD0, "psh", "metric push host",      STRING, MAX_STRING_LENGTH - 1, 0, {.as_str = setting_push_host_default}, setting_push_host},
+	{ 0x41, "psp", "metric push port",      INTEGER, ((1 << 16) - 1),      0, {0}                                , &setting_push_port},
 };
 #define SETTINGS_COUNT ((int32_t)(sizeof(settings)/sizeof(settings[0])))
 
@@ -136,7 +145,7 @@ void handleSettingsGet()
 	for(uint8_t index_setting = 0; index_setting < SETTINGS_COUNT; index_setting++)
 	{
 		message_buffer +=
-		String("<tr>") + 
+		String("<tr>") +
 			"<td>" + settings[index_setting].name + "</td>"
 			"<td>";
 

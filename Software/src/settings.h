@@ -21,3 +21,7 @@ extern char setting_location_tag[];
 extern char setting_wifi_ssid[];
 extern char setting_wifi_psk[];
 extern char setting_wifi_hostname[];
+
+extern char setting_push_host[];
+extern int32_t setting_push_enable;
+extern int32_t setting_push_port;

@@ -21,6 +21,7 @@ void handleStatus()
 	String preable = INFLUX_PREAMBLE;
 
 	message_buffer += preable + "spi_read_time_us value=" + String(lastMetricReadTime) + "\n";
+	message_buffer += preable + "push_time_us value=" + String(lastMetricPushTime) + "\n";
 	message_buffer += preable + "free_heap_kbytes value=" + String(((float)ESP.getFreeHeap())/1024, 3) + "\n";
 	message_buffer += preable + "logic_voltage value=" + String(((float)ESP.getVcc())/1000, 2) + "\n";
 	message_buffer += preable + "uptime value=" + String(uptime_seconds) + "\n";

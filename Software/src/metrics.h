@@ -14,5 +14,6 @@ extern int64_t total_energy;
 #define INFLUX_PREAMBLE String(setting_metric_name) + ",loc=" + setting_location_tag + ",name="
 
 extern unsigned long lastMetricReadTime;
+extern unsigned long lastMetricPushTime;
 
 #endif

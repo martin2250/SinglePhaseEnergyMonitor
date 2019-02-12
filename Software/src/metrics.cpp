@@ -45,6 +45,7 @@ struct Metric metrics[] = {
 int64_t total_energy;
 // last time taken to read all metrics from the ATM90E36A (in microseconds)
 unsigned long lastMetricReadTime = 0;
+unsigned long lastMetricPushTime = 0;
 // fill value buffers completely before serving metrics to webpage
 uint8_t webpage_wait_counter = SAMPLE_COUNT_MAX + 1;
 // index of next value to be replaced
@@ -52,10 +53,8 @@ uint8_t index_nextvalue = 0;
 
 void initMetrics()
 {
-	for(uint8_t index_metric = 0; index_metric < METRIC_COUNT; index_metric++)
-	{
-		metrics[index_metric].values = (int32_t*)malloc(SAMPLE_COUNT_MAX * sizeof(int32_t));
-	}
+	for (uint8_t index_metric = 0; index_metric < METRIC_COUNT; index_metric++)
+		metrics[index_metric].values = (int32_t *)malloc(SAMPLE_COUNT_MAX * sizeof(int32_t));
 	resetMetrics();
 }
 
@@ -66,29 +65,77 @@ void resetMetrics()
 	index_nextvalue = 0;
 }
 
+void getMetrics(bool all, int16_t bufferpos)
+{
+	message_buffer.remove(0);
+
+	String preamble = INFLUX_PREAMBLE;
+
+	for (uint8_t index_metric = 0; index_metric < METRIC_COUNT; index_metric++)
+	{
+		struct Metric metric = metrics[index_metric];
+
+		if ((!all) && (!metric.showInMain))
+			continue;
+
+		int64_t valuesum = 0;
+
+
+		double value;
+
+		if (bufferpos < 0)
+		{
+			int *valueptr = metric.values;
+
+			for (uint8_t i = 0; i < setting_sample_count; i++)
+				valuesum += *(valueptr++);
+
+			value = valuesum * metric.factor / setting_sample_count;
+		}
+		else
+		{
+			value = metric.values[bufferpos] * metric.factor;
+		}
+
+		if (metric.correct_pga)
+			value *= pga_correction_factor;
+
+		if (metric.type == LSB_COMPLEMENT || metric.type == LSB_UNSIGNED)
+			value /= (1 << 8);
+
+		if (metric.address == Freq)
+			value *= (1 + ((double)setting_freq_correct) / 10000.0);
+
+		message_buffer += preamble + metric.name;
+		message_buffer += " value=" + String(value, metric.decimals) + "\n";
+	}
+
+	message_buffer += preamble + "total_energy value=" + String(pga_correction_factor * ((double)total_energy) / (1000 * 10), 4) + "\n";
+}
+
 const uint8_t total_energy_write_interval = 50;
 
 void readMetrics()
 {
 	unsigned long starttime = micros();
 
-	if(webpage_wait_counter)
+	if (webpage_wait_counter)
 		webpage_wait_counter--;
 
 	total_energy += read_register(APenergy);
 	total_energy -= read_register(ANenergy);
 
-	for(uint8_t index_metric = 0; index_metric < METRIC_COUNT; index_metric++)
+	for (uint8_t index_metric = 0; index_metric < METRIC_COUNT; index_metric++)
 	{
 		struct Metric metric = metrics[index_metric];
 
 		int32_t value;
 
-		if(metric.type == LSB_COMPLEMENT)
+		if (metric.type == LSB_COMPLEMENT)
 		{
 			uint32_t val = read_register(metric.address);
 
-			if(val & 0x8000)
+			if (val & 0x8000)
 				val |= 0xFF0000;
 
 			uint16_t lsb = (unsigned short)read_register(LastLSB);
@@ -97,13 +144,13 @@ void readMetrics()
 
 			value = (int32_t)val;
 		}
-		else if(metric.type == LSB_UNSIGNED)
+		else if (metric.type == LSB_UNSIGNED)
 		{
 			value = (unsigned short)read_register(metric.address);
 			uint16_t lsb = (unsigned short)read_register(LastLSB);
 			value = (value << 8) + (lsb >> 8);
 		}
-		else if(metric.type == NOLSB_SIGNED)
+		else if (metric.type == NOLSB_SIGNED)
 		{
 			value = (signed short)read_register(metric.address);
 		}
@@ -115,54 +162,39 @@ void readMetrics()
 		metrics[index_metric].values[index_nextvalue] = value;
 	}
 
-	if(++index_nextvalue == setting_sample_count)
-		index_nextvalue = 0;
+	unsigned long readendtime = micros();
+	lastMetricReadTime = readendtime - starttime;
 
-	lastMetricReadTime = micros() - starttime;
+	if (setting_push_enable)
+	{
+		WiFiClient client;
+
+		if (client.connect(setting_push_host, setting_push_port))
+		{
+			getMetrics(false, index_nextvalue);
+			client.println(message_buffer);
+			client.flush();
+			client.stop();
+		}
+	}
+
+	lastMetricPushTime = micros() - readendtime;
+
+	if (++index_nextvalue == setting_sample_count)
+		index_nextvalue = 0;
 }
+
+
 
 void handleMetricsInternal(bool all)
 {
-	if(webpage_wait_counter)
+	if (webpage_wait_counter)
 	{
 		httpServer.send(400, "text/plain", "please wait for buffers to fill");
 		return;
 	}
 
-	message_buffer.remove(0);
-
-	String preamble = INFLUX_PREAMBLE;
-
-	for(uint8_t index_metric = 0; index_metric < METRIC_COUNT; index_metric++)
-	{
-		struct Metric metric = metrics[index_metric];
-
-		if((!all) && (!metric.showInMain))
-			continue;
-
-		int64_t valuesum = 0;
-
-		int *valueptr = metric.values;
-
-		for(uint8_t i = 0; i < setting_sample_count; i++)
-			valuesum += *(valueptr++);
-
-		double value = valuesum * metric.factor / setting_sample_count;
-
-		if(metric.correct_pga)
-			value *= pga_correction_factor;
-
-		if(metric.type == LSB_COMPLEMENT || metric.type == LSB_UNSIGNED)
-			value /= (1 << 8);
-
-		if(metric.address == Freq)
-			value *= (1 + ((double)setting_freq_correct)/10000.0);
-
-		message_buffer += preamble + metric.name;
-		message_buffer += " value=" + String(value, metric.decimals) + "\n";
-	}
-
-	message_buffer += preamble + "total_energy value=" + String(pga_correction_factor * ((double)total_energy)/(1000 * 10), 4) + "\n";
+	getMetrics(all, -1);
 
 	httpServer.send(200, "text/plain; version=0.0.4", message_buffer);
 }
