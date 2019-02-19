@@ -4,42 +4,41 @@
 #include "settings.h"
 #include "web.h"
 
-enum ValueType {LSB_UNSIGNED = 1, LSB_COMPLEMENT = 2, NOLSB_UNSIGNED = 3, NOLSB_SIGNED = 4};
+enum ValueType { LSB_UNSIGNED = 1, LSB_COMPLEMENT = 2, NOLSB_UNSIGNED = 3, NOLSB_SIGNED = 4 };
 
-struct Metric
-{
+struct Metric {
 	// content of the name tag
-	const char *name;
+	const char *	name;
 	// address of SPI register
-	unsigned short address;
+	unsigned short	address;
 	// factor to convert the raw integer value to the proper floating point value
 	// when LSB is used, a factor of 1/256 is added automatically
-	double factor;
+	double		factor;
 	// wether to use the additional LSB register
-	enum ValueType type;
+	enum ValueType	type;
 	// number of decimal places to show
-	uint8_t decimals;
+	uint8_t		decimals;
 	// showInMain = false -> the metric is only shown on /allmetrics
-	bool showInMain;
+	bool		showInMain;
 	// correct_pga = true -> metric is divided by current PGA setting
-	bool correct_pga;
-	int32_t *values;
+	bool		correct_pga;
+	int32_t *	values;
 };
 
 struct Metric metrics[] = {
-	{"voltage_rms",    Urms,   1./100,  LSB_UNSIGNED,   3, true,  false},
-	{"current_rms",    Irms,   1./1000, LSB_UNSIGNED,   5, true,  true},
+	{ "voltage_rms",    Urms,   1. / 100,  LSB_UNSIGNED,   3, true,	 false },
+	{ "current_rms",    Irms,   1. / 1000, LSB_UNSIGNED,   5, true,	 true  },
 
-	{"power_active",   Pmean,  1./1000, LSB_COMPLEMENT, 6, true,  true},
-	{"power_reactive", Qmean,  1./1000, LSB_COMPLEMENT, 6, false, true},
-	{"power_apparent", Smean,  1./1000, LSB_COMPLEMENT, 6, false, true},
+	{ "power_active",   Pmean,  1. / 1000, LSB_COMPLEMENT, 6, true,	 true  },
+	{ "power_reactive", Qmean,  1. / 1000, LSB_COMPLEMENT, 6, false, true  },
+	{ "power_apparent", Smean,  1. / 1000, LSB_COMPLEMENT, 6, false, true  },
 
-	{"power_factor",   PowerF, 1./1000, NOLSB_SIGNED,   3, true,  false},
-	{"phase_angle",    Pangle, 1./10,   NOLSB_SIGNED,   2, false, false},
+	{ "power_factor",   PowerF, 1. / 1000, NOLSB_SIGNED,   3, true,	 false },
+	{ "phase_angle",    Pangle, 1. / 10,   NOLSB_SIGNED,   2, false, false },
 
-	{"frequency",      Freq,   1./100,  NOLSB_UNSIGNED, 3, true,  false},
+	{ "frequency",	    Freq,   1. / 100,  NOLSB_UNSIGNED, 3, true,	 false },
 };
-#define METRIC_COUNT (sizeof(metrics)/sizeof(metrics[0]))
+#define METRIC_COUNT (sizeof(metrics) / sizeof(metrics[0]))
 
 // total energy count
 int64_t total_energy;
@@ -60,7 +59,7 @@ void initMetrics()
 
 void resetMetrics()
 {
-	webpage_wait_counter = setting_sample_count + 1;
+	webpage_wait_counter = setting_sample_count.value + 1;
 	total_energy = 0;
 	index_nextvalue = 0;
 }
@@ -71,8 +70,7 @@ void getMetrics(bool all, int16_t bufferpos)
 
 	String preamble = INFLUX_PREAMBLE;
 
-	for (uint8_t index_metric = 0; index_metric < METRIC_COUNT; index_metric++)
-	{
+	for (uint8_t index_metric = 0; index_metric < METRIC_COUNT; index_metric++) {
 		struct Metric metric = metrics[index_metric];
 
 		if ((!all) && (!metric.showInMain))
@@ -83,17 +81,14 @@ void getMetrics(bool all, int16_t bufferpos)
 
 		double value;
 
-		if (bufferpos < 0)
-		{
+		if (bufferpos < 0) {
 			int *valueptr = metric.values;
 
-			for (uint8_t i = 0; i < setting_sample_count; i++)
+			for (uint8_t i = 0; i < setting_sample_count.value; i++)
 				valuesum += *(valueptr++);
 
-			value = valuesum * metric.factor / setting_sample_count;
-		}
-		else
-		{
+			value = valuesum * metric.factor / setting_sample_count.value;
+		} else {
 			value = metric.values[bufferpos] * metric.factor;
 		}
 
@@ -104,7 +99,7 @@ void getMetrics(bool all, int16_t bufferpos)
 			value /= (1 << 8);
 
 		if (metric.address == Freq)
-			value *= (1 + ((double)setting_freq_correct) / 10000.0);
+			value *= (1 + ((double)setting_frequency_correct.value) / 10000.0);
 
 		message_buffer += preamble + metric.name;
 		message_buffer += " value=" + String(value, metric.decimals) + "\n";
@@ -125,14 +120,12 @@ void readMetrics()
 	total_energy += read_register(APenergy);
 	total_energy -= read_register(ANenergy);
 
-	for (uint8_t index_metric = 0; index_metric < METRIC_COUNT; index_metric++)
-	{
+	for (uint8_t index_metric = 0; index_metric < METRIC_COUNT; index_metric++) {
 		struct Metric metric = metrics[index_metric];
 
 		int32_t value;
 
-		if (metric.type == LSB_COMPLEMENT)
-		{
+		if (metric.type == LSB_COMPLEMENT) {
 			uint32_t val = read_register(metric.address);
 
 			if (val & 0x8000)
@@ -143,19 +136,13 @@ void readMetrics()
 			val = (val << 8) + (lsb >> 8);
 
 			value = (int32_t)val;
-		}
-		else if (metric.type == LSB_UNSIGNED)
-		{
+		} else if (metric.type == LSB_UNSIGNED) {
 			value = (unsigned short)read_register(metric.address);
 			uint16_t lsb = (unsigned short)read_register(LastLSB);
 			value = (value << 8) + (lsb >> 8);
-		}
-		else if (metric.type == NOLSB_SIGNED)
-		{
+		} else if (metric.type == NOLSB_SIGNED) {
 			value = (signed short)read_register(metric.address);
-		}
-		else //if (metric.type == NOLSB_UNSIGNED)
-		{
+		} else { //if (metric.type == NOLSB_UNSIGNED)
 			value = (unsigned short)read_register(metric.address);
 		}
 
@@ -165,12 +152,10 @@ void readMetrics()
 	unsigned long readendtime = micros();
 	lastMetricReadTime = readendtime - starttime;
 
-	if (setting_push_enable)
-	{
+	if (setting_push_enable.value) {
 		WiFiClient client;
 
-		if (client.connect(setting_push_host, setting_push_port))
-		{
+		if (client.connect(setting_push_ipaddr.value, setting_push_port.value)) {
 			getMetrics(false, index_nextvalue);
 			client.println(message_buffer);
 			client.flush();
@@ -180,7 +165,7 @@ void readMetrics()
 
 	lastMetricPushTime = micros() - readendtime;
 
-	if (++index_nextvalue == setting_sample_count)
+	if (++index_nextvalue >= setting_sample_count.value)
 		index_nextvalue = 0;
 }
 
@@ -188,8 +173,7 @@ void readMetrics()
 
 void handleMetricsInternal(bool all)
 {
-	if (webpage_wait_counter)
-	{
+	if (webpage_wait_counter) {
 		httpServer.send(400, "text/plain", "please wait for buffers to fill");
 		return;
 	}

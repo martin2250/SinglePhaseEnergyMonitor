@@ -1,9 +1,11 @@
-extern const char* ssid_ap;
-extern const char* password_ap;
+#include <IPAddress.h>
 
+extern const char* ssid_ap;
+
+extern const IPAddress apsubnet;
 extern const IPAddress apip;
 extern const IPAddress apgateway;
-extern const IPAddress subnet;
+
 
 extern unsigned long uptime_seconds;
 extern double loop_duration;

@@ -3,77 +3,51 @@
 
 #define EEPROM_ADDRESS 0x50
 
-void eeprom_write(uint16_t address, int32_t value)
+#if BUFFER_LENGTH < 34
+#error I2C BUFFER TOO SMALL, change BUFFER_LENGTH to at least 34 in /libraries/Wire/Wire.h
+#endif
+
+bool eeprom_write(uint16_t address, uint8_t length, uint8_t *buffer)
 {
 	address *= 4;
+
+	if (length > 32)
+		length = 32;
 
 	Wire.beginTransmission(EEPROM_ADDRESS);
 	Wire.write((address >> 8) & 0x0F);
 	Wire.write(address & 0xFF);
 
-	uint32_t value_unsigned = (uint32_t)value;
-	Wire.write((value_unsigned >> 24) & 0xFF);
-	Wire.write((value_unsigned >> 16) & 0xFF);
-	Wire.write((value_unsigned >> 8) & 0xFF);
-	Wire.write(value_unsigned & 0xFF);
-
-	Wire.endTransmission();
-
-	delay(5);
-}
-
-void eeprom_write(uint16_t address, uint8_t *buffer, uint8_t length)
-{
-	address *= 4;
-
-	if(length > 30)
-		length = 30;
-
-	Wire.beginTransmission(EEPROM_ADDRESS);
-	Wire.write((address >> 8) & 0x0F);
-	Wire.write(address & 0xFF);
-
-	while(length--)
+	while (length--)
 		Wire.write(*(buffer++));
 
-	Wire.endTransmission();
+	if (Wire.endTransmission())
+		return false;
 
 	delay(5);
+
+	return true;
 }
 
-int32_t eeprom_read(uint16_t address)
+bool eeprom_read(uint16_t address, uint8_t length, uint8_t *buffer)
 {
 	address *= 4;
+
+	if (length > 32)
+		length = 32;
 
 	Wire.beginTransmission(EEPROM_ADDRESS);
 	Wire.write((address >> 8) & 0x0F);
 	Wire.write(address & 0xFF);
 
-	Wire.endTransmission(false);
-	Wire.requestFrom((uint8_t)EEPROM_ADDRESS, (uint8_t)4);
+	if (Wire.endTransmission(false))
+		return false;
 
-	uint32_t value_unsigned = 0;
+	if (Wire.requestFrom((uint8_t)EEPROM_ADDRESS, length) != length)
+		return false;
 
-	while(Wire.available())
-		value_unsigned = (value_unsigned << 8) | Wire.read();
-
-	return (int32_t)value_unsigned;
-}
-
-void eeprom_read(uint16_t address, uint8_t *buffer, uint8_t length)
-{
-	address *= 4;
-
-	if(length > 30)
-		length = 30;
-
-	Wire.beginTransmission(EEPROM_ADDRESS);
-	Wire.write((address >> 8) & 0x0F);
-	Wire.write(address & 0xFF);
-
-	Wire.endTransmission(false);
-	Wire.requestFrom((uint8_t)EEPROM_ADDRESS, length);
-
-	while(Wire.available())
+	while (Wire.available())
 		*(buffer++) = Wire.read();
+
+	return true;
 }

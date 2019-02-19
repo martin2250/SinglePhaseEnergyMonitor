@@ -1,5 +1,10 @@
-const char* ssid_ap = "E-Mon-ABCD";
-const char* password_ap = "K314G939";
+#include "globals.h"
+
+const char *ssid_ap = "PowerPlugConf";
+
+const IPAddress apsubnet(255, 255, 255, 0);
+const IPAddress apip(192, 168, 4, 1);
+const IPAddress apgateway(192, 168, 4, 1);
 
 unsigned long uptime_seconds = 0;
 double loop_duration = 0;

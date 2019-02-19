@@ -15,23 +15,24 @@ extern "C" {
 
 ADC_MODE(ADC_VCC);
 
-const IPAddress apsubnet(255, 255, 255, 0);
-const IPAddress apip(192, 168, 4, 1);
-const IPAddress apgateway(192, 168, 4, 1);
-
 void setup(void)
 {
 	Serial.begin(115200);
+	Serial.println("\n\nstart");
+	WiFi.persistent(false);
 
-	Serial.println("\n\nBooting Sketch...");
-
+	Serial.println("init busses");
 	SPI.begin();
 	Wire.begin();
+	Serial.println("init settings");
 	initSettings();
+	Serial.println("init metrics");
 	initMetrics();
+	Serial.println("init sensor");
 	initATM90E26();
 
-	Serial.println("Initializing WiFi");
+
+	Serial.println("init wifi");
 
 	bool enableAP = false;
 
@@ -42,28 +43,43 @@ void setup(void)
 	}
 	ESP.rtcUserMemoryWrite(0, (uint32_t *)&enableAP, sizeof(enableAP));
 
-	WiFi.persistent(false);
 	WiFi.mode(WIFI_OFF);
-	delay(2000);
-
-	if (enableAP)
-		WiFi.mode(WIFI_AP_STA);
-	else
-		WiFi.mode(WIFI_STA);
-
-	WiFi.disconnect(true);
-	delay(1000);
-	if ((strlen(setting_wifi_ssid) > 1) && (strlen(setting_wifi_psk) >= 8))
-		WiFi.begin(setting_wifi_ssid, setting_wifi_psk);
-	(void)wifi_station_dhcpc_start();
 
 	if (enableAP) {
-		WiFi.softAPConfig(apip, apgateway, apsubnet);
-		WiFi.softAP(ssid_ap, password_ap);
+		Serial.println("enable station and access point");
+		WiFi.mode(WIFI_AP_STA);
+	} else {
+		Serial.println("enable station");
+		WiFi.mode(WIFI_STA);
 	}
 
-	WiFi.hostname(setting_wifi_hostname);
+	if ((strlen(setting_wifi_ssid.value) > 1) && (strlen(setting_wifi_psk.value) >= 8)) {
+		Serial.print("connecting to ");
+		Serial.println(setting_wifi_ssid.value);
+		WiFi.begin(setting_wifi_ssid.value, setting_wifi_psk.value);
+	} else {
+		Serial.println("no wifi ssid or ap stored, not connecting");
+	}
 
+	if (setting_wifi_static_enable.value) {
+		Serial.println("setting static IP");
+		WiFi.config(setting_wifi_static_ip.value, setting_wifi_static_gateway.value, setting_wifi_static_netmask.value);
+	} else {
+		Serial.println("enable dhcp");
+		(void)wifi_station_dhcpc_start();
+	}
+
+	if (enableAP) {
+		Serial.println("configure AP");
+		WiFi.softAPConfig(apip, apgateway, apsubnet);
+		WiFi.softAP(ssid_ap);
+	}
+
+	Serial.print("set hostname to ");
+	Serial.println(setting_wifi_hostname.value);
+	WiFi.hostname(setting_wifi_hostname.value);
+
+	Serial.println("init webserver");
 	initWeb();
 
 	Serial.println("setup finished");

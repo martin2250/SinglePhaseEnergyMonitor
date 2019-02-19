@@ -4,289 +4,265 @@
 #include "metrics.h"
 #include "globals.h"
 #include "ATM90E26.h"
+#include "web.h"
 
-enum SettingsType
-{
-	INTEGER = 0,
-	STRING = 1
-};
+SettingsManager settings_manager(&httpServer);
 
-struct Setting
-{
-	// setting address in eeprom (multiplied by four to obtain hardware address)
-	uint16_t address;
-	// id string
-	const char *abbrev;
-	// display name of the setting
-	const char *name;
-	// type
-	enum SettingsType type;
-	// min / max value (or string length)
-	int32_t max;
-	int32_t min;
-	// default values for integers and strings
-	union{
-		int32_t as_int;
-		char *as_str;
-	}value_default;
-	// pointer to value
-	void *value;
-};
+Setting_Int32 setting_current_pga_gain;
+Setting_Int32 setting_sample_count;
 
-// max string length I2C buffer length - 2
-// also subtract one for terminating 0x00
-#define MAX_STRING_LENGTH 30
+Setting_Int32 setting_voltage_gain;
+Setting_Int32 setting_current_gain;
+Setting_Int64 setting_pl_const_24;
 
-int32_t setting_freq_correct;
-int32_t setting_current_pga_gain;
-int32_t setting_sample_count;
+Setting_Int32 setting_frequency_correct;
+Setting_Int32 setting_pga_gain_error[5];
 
-int32_t setting_current_gain;
-int32_t setting_voltage_gain;
-int32_t setting_pl_const_24;
-int32_t setting_pga_gain_error[5];
+Setting_Int32 setting_voltage_offset;
+Setting_Int32 setting_current_offset;
+Setting_Int32 setting_act_power_offset;
+Setting_Int32 setting_rct_power_offset;
 
-int32_t setting_voltage_offset;
-int32_t setting_current_offset;
-int32_t setting_act_power_offset;
-int32_t setting_rct_power_offset;
+Setting_String setting_metric_name;
+Setting_String setting_location_tag;
 
-char setting_metric_name[MAX_STRING_LENGTH];
-char setting_location_tag[MAX_STRING_LENGTH];
-char setting_wifi_ssid[MAX_STRING_LENGTH];
-char setting_wifi_psk[MAX_STRING_LENGTH];
-char setting_wifi_hostname[MAX_STRING_LENGTH];
+Setting_String setting_wifi_ssid;
+Setting_String setting_wifi_psk;
 
-char setting_push_host[MAX_STRING_LENGTH];
-int32_t setting_push_enable;
-int32_t setting_push_port;
+Setting_String setting_wifi_hostname;
 
-char setting_metric_name_default[MAX_STRING_LENGTH] = "singlephase";
-char setting_location_tag_default[MAX_STRING_LENGTH] = "unknown";
-char setting_wifi_ssid_default[MAX_STRING_LENGTH] = "";
-char setting_wifi_psk_default[MAX_STRING_LENGTH] = "";
-char setting_wifi_hostname_default[MAX_STRING_LENGTH] = "singlephasemeter";
-char setting_push_host_default[MAX_STRING_LENGTH] = "";
+Setting_Bool setting_wifi_static_enable;
+Setting_IPAddress setting_wifi_static_ip;
+Setting_IPAddress setting_wifi_static_gateway;
+Setting_IPAddress setting_wifi_static_netmask;
 
-struct Setting settings[] = {
-	{0x00, "buff",  "sample buffer size (0.5s interval)",  INTEGER, SAMPLE_COUNT_MAX, 1,       {1},     &setting_sample_count},
-	{0x01, "pga",   "pga gain index",                      INTEGER, 4,                0,       {0},     &setting_current_pga_gain},
-
-	{0x10, "ugn", "voltage gain", INTEGER, ((2<<16)-1), 0,           {22025},    &setting_voltage_gain},
-	{0x11, "ign", "current gain", INTEGER, ((2<<16)-1), 0,           {17491},    &setting_current_gain},
-	{0x12, "plc", "PL_const",     INTEGER, 0x7FFFFFFF,  -2147483648, {9810199},  &setting_pl_const_24},
-
-	{0x20, "freqc", "frequency error",      INTEGER, 10000, -10000,    {0}, &setting_freq_correct},
-	{0x28, "pgae01", "PGA error x1",        INTEGER, 10000, -10000,    {0}, setting_pga_gain_error},
-	{0x29, "pgae04", "PGA error x4",        INTEGER, 10000, -10000,    {0}, setting_pga_gain_error + 1},
-	{0x2A, "pgae08", "PGA error x8",        INTEGER, 10000, -10000,    {0}, setting_pga_gain_error + 2},
-	{0x2B, "pgae16", "PGA error x16",       INTEGER, 10000, -10000,    {0}, setting_pga_gain_error + 3},
-	{0x2C, "pgae24", "PGA error x24",       INTEGER, 10000, -10000,    {0}, setting_pga_gain_error + 4},
-
-	{0x30, "uoff", "voltage offset",        INTEGER, ((2<<16)-1), 0, {0}, &setting_voltage_offset},
-	{0x31, "ioff", "current offset",        INTEGER, ((2<<16)-1), 0, {0}, &setting_current_offset},
-	{0x32, "poff", "active power offset",   INTEGER, ((2<<16)-1), 0, {0}, &setting_act_power_offset},
-	{0x33, "qoff", "reactive power offset", INTEGER, ((2<<16)-1), 0, {0}, &setting_act_power_offset},
-
-	{0xA0, "meas", "metric name",           STRING, MAX_STRING_LENGTH - 1, 2, {.as_str = setting_metric_name_default},   setting_metric_name},
-	{0xA8, "loc",  "location tag",          STRING, MAX_STRING_LENGTH - 1, 2, {.as_str = setting_location_tag_default},  setting_location_tag},
-	{0xB0, "ssid", "WIFI SSID",             STRING, MAX_STRING_LENGTH - 1, 0, {.as_str = setting_wifi_ssid_default},     setting_wifi_ssid},
-	{0xB8, "psk",  "WIFI PSK (hidden)",     STRING, MAX_STRING_LENGTH - 1, 0, {.as_str = setting_wifi_psk_default},      setting_wifi_psk},
-	{0xC0, "host", "hostname",              STRING, MAX_STRING_LENGTH - 1, 2, {.as_str = setting_wifi_hostname_default}, setting_wifi_hostname},
-
-	{ 0x40, "pse", "metric push enable",    INTEGER, 1,			           0, {0}                                , &setting_push_enable},
-	{ 0xD0, "psh", "metric push host",      STRING, MAX_STRING_LENGTH - 1, 0, {.as_str = setting_push_host_default}, setting_push_host},
-	{ 0x41, "psp", "metric push port",      INTEGER, ((1 << 16) - 1),      0, {0}                                , &setting_push_port},
-};
-#define SETTINGS_COUNT ((int32_t)(sizeof(settings)/sizeof(settings[0])))
+Setting_Bool setting_push_enable;
+Setting_IPAddress setting_push_ipaddr;
+Setting_Int32 setting_push_port;
 
 void initSettings()
 {
-	for(uint8_t index_setting = 0; index_setting < SETTINGS_COUNT; index_setting++)
-	{
-		if(settings[index_setting].type == INTEGER)
-		{
-			int32_t value_eeprom = eeprom_read(settings[index_setting].address);
+	settings_manager.readfunc = eeprom_read;
+	settings_manager.writefunc = eeprom_write;
 
-			if((value_eeprom >= settings[index_setting].min) && (value_eeprom <= settings[index_setting].max))
-				*((int32_t*)settings[index_setting].value) = value_eeprom;
-			else
-				*((int32_t*)settings[index_setting].value) = settings[index_setting].value_default.as_int;
-		}
-		else if(settings[index_setting].type == STRING)
-		{
-			eeprom_read(settings[index_setting].address, (uint8_t*)settings[index_setting].value, MAX_STRING_LENGTH);
+	/* -------------------------------------------------------------- */
 
-			int length = strlen((char*)settings[index_setting].value);
+	setting_sample_count.groups = SETTINGS_GROUP_METRICS;
+	setting_sample_count.address = 0x00;
+	setting_sample_count.abbrev = PSTR("buff");
+	setting_sample_count.name = PSTR("sample buffer size (0.5s interval)");
+	setting_sample_count.val_default = 1;
+	setting_sample_count.min = 1;
+	setting_sample_count.max = SAMPLE_COUNT_MAX;
+	settings_manager.settings.push_back(&setting_sample_count);
 
-			if ((length < settings[index_setting].min) || (length > settings[index_setting].max))
-				strcpy((char*)settings[index_setting].value, settings[index_setting].value_default.as_str);
-		}
+	setting_current_pga_gain.groups = SETTINGS_GROUP_METRICS;
+	setting_current_pga_gain.address = 0x01;
+	setting_current_pga_gain.abbrev = PSTR("pga");
+	setting_current_pga_gain.name = PSTR("pga gain index");
+	setting_current_pga_gain.min = 0;
+	setting_current_pga_gain.max = 4;
+	settings_manager.settings.push_back(&setting_current_pga_gain);
+
+	/* -------------------------------------------------------------- */
+
+	setting_voltage_gain.groups = SETTINGS_GROUP_CALIBRATION;
+	setting_voltage_gain.address = 0x10;
+	setting_voltage_gain.abbrev = PSTR("ugn");
+	setting_voltage_gain.name = PSTR("voltage gain");
+	setting_voltage_gain.val_default = 22000;
+	setting_voltage_gain.min = 0;
+	setting_voltage_gain.max = 0xFFFF;
+	settings_manager.settings.push_back(&setting_voltage_gain);
+
+	setting_current_gain.groups = SETTINGS_GROUP_CALIBRATION;
+	setting_current_gain.address = 0x11;
+	setting_current_gain.abbrev = PSTR("ign");
+	setting_current_gain.name = PSTR("current gain");
+	setting_current_gain.val_default = 17500;
+	setting_current_gain.min = 0;
+	setting_current_gain.max = 0xFFFF;
+	settings_manager.settings.push_back(&setting_current_gain);
+	/* -------------------------------------------------------------- */
+
+	setting_pl_const_24.groups = SETTINGS_GROUP_CALIBRATION;
+	setting_pl_const_24.address = 0x12;
+	setting_pl_const_24.abbrev = PSTR("plc");
+	setting_pl_const_24.name = PSTR("PL_CONST");
+	setting_pl_const_24.val_default = 10000000;
+	setting_pl_const_24.min = 0;
+	setting_pl_const_24.max = 0xFFFFFFFF;
+	settings_manager.settings.push_back(&setting_pl_const_24);
+
+	/* -------------------------------------------------------------- */
+
+	setting_frequency_correct.groups = SETTINGS_GROUP_CALIBRATION;
+	setting_frequency_correct.address = 0x20;
+	setting_frequency_correct.abbrev = PSTR("freqc");
+	setting_frequency_correct.name = PSTR("frequency error");
+	setting_frequency_correct.min = -10000;
+	setting_frequency_correct.max = 10000;
+	settings_manager.settings.push_back(&setting_frequency_correct);
+
+
+	setting_pga_gain_error[0].abbrev = PSTR("pgae01");
+	setting_pga_gain_error[0].name = PSTR("PGA error x1");
+	setting_pga_gain_error[1].abbrev = PSTR("pgae04");
+	setting_pga_gain_error[1].name = PSTR("PGA error x4");
+	setting_pga_gain_error[2].abbrev = PSTR("pgae08");
+	setting_pga_gain_error[2].name = PSTR("PGA error x8");
+	setting_pga_gain_error[3].abbrev = PSTR("pgae16");
+	setting_pga_gain_error[3].name = PSTR("PGA error x16");
+	setting_pga_gain_error[4].abbrev = PSTR("pgae24");
+	setting_pga_gain_error[4].name = PSTR("PGA error x24");
+
+	for (uint8_t i = 0; i < 5; i++) {
+		setting_pga_gain_error[i].groups = SETTINGS_GROUP_CALIBRATION;
+		setting_pga_gain_error[i].address = 0x28 + i;
+		setting_pga_gain_error[i].min = -10000;
+		setting_pga_gain_error[i].max = 10000;
+		settings_manager.settings.push_back(setting_pga_gain_error + i);
 	}
+
+	/* -------------------------------------------------------------- */
+
+	setting_voltage_offset.groups = SETTINGS_GROUP_CALIBRATION;
+	setting_voltage_offset.address = 0x30;
+	setting_voltage_offset.abbrev = PSTR("uoff");
+	setting_voltage_offset.name = PSTR("voltage offset");
+	setting_voltage_offset.min = 0;
+	setting_voltage_offset.max = 0xFFFF;
+	settings_manager.settings.push_back(&setting_voltage_offset);
+
+	setting_current_offset.groups = SETTINGS_GROUP_CALIBRATION;
+	setting_current_offset.address = 0x31;
+	setting_current_offset.abbrev = PSTR("ioff");
+	setting_current_offset.name = PSTR("current offset");
+	setting_current_offset.min = 0;
+	setting_current_offset.max = 0xFFFF;
+	settings_manager.settings.push_back(&setting_current_offset);
+
+	setting_act_power_offset.groups = SETTINGS_GROUP_CALIBRATION;
+	setting_act_power_offset.address = 0x32;
+	setting_act_power_offset.abbrev = PSTR("poff");
+	setting_act_power_offset.name = PSTR("active power offset");
+	setting_act_power_offset.min = 0;
+	setting_act_power_offset.max = 0xFFFF;
+	settings_manager.settings.push_back(&setting_act_power_offset);
+
+	setting_rct_power_offset.groups = SETTINGS_GROUP_CALIBRATION;
+	setting_rct_power_offset.address = 0x33;
+	setting_rct_power_offset.abbrev = PSTR("qoff");
+	setting_rct_power_offset.name = PSTR("reactive power offset");
+	setting_rct_power_offset.min = 0;
+	setting_rct_power_offset.max = 0xFFFF;
+	settings_manager.settings.push_back(&setting_rct_power_offset);
+
+	/* -------------------------------------------------------------- */
+
+	setting_metric_name.groups = SETTINGS_GROUP_METRICS;
+	setting_metric_name.address = 0xA0;
+	setting_metric_name.abbrev = PSTR("meas");
+	setting_metric_name.name = PSTR("measurement name");
+	setting_metric_name.max_length = 31;
+	setting_metric_name.value = (char *)malloc(32);
+	setting_metric_name.val_default = PSTR("power");
+	settings_manager.settings.push_back(&setting_metric_name);
+
+	setting_location_tag.groups = SETTINGS_GROUP_METRICS;
+	setting_location_tag.address = 0xA8;
+	setting_location_tag.abbrev = PSTR("loc");
+	setting_location_tag.name = PSTR("location tag");
+	setting_location_tag.max_length = 31;
+	setting_location_tag.value = (char *)malloc(32);
+	setting_location_tag.val_default = PSTR("unknown");
+	settings_manager.settings.push_back(&setting_location_tag);
+
+	/* -------------------------------------------------------------- */
+
+	setting_wifi_ssid.groups = SETTINGS_GROUP_NETWORK;
+	setting_wifi_ssid.address = 0xB0;
+	setting_wifi_ssid.abbrev = PSTR("ssid");
+	setting_wifi_ssid.name = PSTR("WIFI SSID");
+	setting_wifi_ssid.max_length = 31;
+	setting_wifi_ssid.value = (char *)malloc(32);
+	setting_wifi_ssid.val_default = PSTR("");
+	settings_manager.settings.push_back(&setting_wifi_ssid);
+
+	setting_wifi_psk.groups = SETTINGS_GROUP_NETWORK;
+	setting_wifi_psk.address = 0xB8;
+	setting_wifi_psk.abbrev = PSTR("psk");
+	setting_wifi_psk.name = PSTR("WIFI PSK (hidden)");
+	setting_wifi_psk.options.hide_value = 1;
+	setting_wifi_psk.max_length = 31;
+	setting_wifi_psk.value = (char *)malloc(32);
+	setting_wifi_psk.val_default = PSTR("");
+	settings_manager.settings.push_back(&setting_wifi_psk);
+
+	setting_wifi_hostname.groups = SETTINGS_GROUP_NETWORK;
+	setting_wifi_hostname.address = 0xC0;
+	setting_wifi_hostname.abbrev = PSTR("host");
+	setting_wifi_hostname.name = PSTR("hostname");
+	setting_wifi_hostname.max_length = 31;
+	setting_wifi_hostname.value = (char *)malloc(32);
+	setting_wifi_hostname.val_default = PSTR("powerplug");
+	settings_manager.settings.push_back(&setting_wifi_hostname);
+
+	/* -------------------------------------------------------------- */
+
+	setting_wifi_static_enable.groups = SETTINGS_GROUP_NETWORK;
+	setting_wifi_static_enable.address = 0x40;
+	setting_wifi_static_enable.abbrev = PSTR("sie");
+	setting_wifi_static_enable.name = PSTR("enable static IP");
+	settings_manager.settings.push_back(&setting_wifi_static_enable);
+
+	setting_wifi_static_ip.groups = SETTINGS_GROUP_NETWORK;
+	setting_wifi_static_ip.address = 0x41;
+	setting_wifi_static_ip.abbrev = PSTR("sip");
+	setting_wifi_static_ip.name = PSTR("IP address");
+	setting_wifi_static_ip.val_default = IPAddress(192, 168, 1, 10);
+	settings_manager.settings.push_back(&setting_wifi_static_ip);
+
+	setting_wifi_static_gateway.groups = SETTINGS_GROUP_NETWORK;
+	setting_wifi_static_gateway.address = 0x42;
+	setting_wifi_static_gateway.abbrev = PSTR("sig");
+	setting_wifi_static_gateway.name = PSTR("IP gateway");
+	setting_wifi_static_gateway.val_default = IPAddress(192, 168, 1, 1);
+	settings_manager.settings.push_back(&setting_wifi_static_gateway);
+
+	setting_wifi_static_netmask.groups = SETTINGS_GROUP_NETWORK;
+	setting_wifi_static_netmask.address = 0x43;
+	setting_wifi_static_netmask.abbrev = PSTR("sim");
+	setting_wifi_static_netmask.name = PSTR("netmask");
+	setting_wifi_static_netmask.val_default = IPAddress(255, 255, 255, 0);
+	settings_manager.settings.push_back(&setting_wifi_static_netmask);
+
+	/* -------------------------------------------------------------- */
+
+	setting_push_enable.groups = SETTINGS_GROUP_METRICS;
+	setting_push_enable.address = 0x50;
+	setting_push_enable.abbrev = PSTR("pse");
+	setting_push_enable.name = PSTR("enable metrics pushing");
+	settings_manager.settings.push_back(&setting_push_enable);
+
+	setting_push_ipaddr.groups = SETTINGS_GROUP_METRICS;
+	setting_push_ipaddr.address = 0x51;
+	setting_push_ipaddr.abbrev = PSTR("psi");
+	setting_push_ipaddr.name = PSTR("metrics push IP address");
+	setting_push_ipaddr.val_default = IPAddress(192, 168, 1, 100);
+	settings_manager.settings.push_back(&setting_push_ipaddr);
+
+	setting_push_port.groups = SETTINGS_GROUP_METRICS;
+	setting_push_port.address = 0x52;
+	setting_push_port.abbrev = PSTR("psp");
+	setting_push_port.name = PSTR("metrics push port");
+	setting_push_port.min = 0;
+	setting_push_port.max = 0xFFFF;
+	settings_manager.settings.push_back(&setting_push_port);
+
+	/* -------------------------------------------------------------- */
+
+	settings_manager.load();
 }
 
-void handleSettingsGet()
-{
-	message_buffer.remove(0);
-
-	message_buffer +=
-	"<html>"
-		"<body>"
-			"<h1>Settings</h1>"
-			"<table>"
-				"<tr>"
-					"<th>Name</th>"
-					"<th>Value</th>"
-					"<th>Default</th>"
-					"<th>Min</th>"
-					"<th>Max</th>"
-				"</tr>";
-
-	for(uint8_t index_setting = 0; index_setting < SETTINGS_COUNT; index_setting++)
-	{
-		message_buffer +=
-		String("<tr>") +
-			"<td>" + settings[index_setting].name + "</td>"
-			"<td>";
-
-		if(settings[index_setting].type == INTEGER)
-		{
-			message_buffer += String(*((int32_t*)settings[index_setting].value));
-		}
-		else if (settings[index_setting].type == STRING)
-		{
-			if (settings[index_setting].value == setting_wifi_psk)	// hide wifi psk
-			{
-				uint8_t counter = strlen((char*)settings[index_setting].value);
-				while(counter--)
-					message_buffer += "*";
-			}
-			else
-			{
-				message_buffer += String((char*)settings[index_setting].value);
-			}
-		}
-
-		message_buffer +=
-			"</td>"
-			"<td>";
-
-		if(settings[index_setting].type == INTEGER)
-		{
-			message_buffer += String(settings[index_setting].value_default.as_int);
-		}
-		else if (settings[index_setting].type == STRING)
-		{
-			message_buffer += String(settings[index_setting].value_default.as_str);
-		}
-		message_buffer +=
-			"</td>"
-			"<td>" + String(settings[index_setting].min) + "</td>"
-			"<td>" + String(settings[index_setting].max) + "</td>"
-		"</tr>";
-	}
-
-	message_buffer +=
-			"</table>"
-			"<form method=\"post\">"
-				"<select name=\"id\">"
-					"<option value=\"--\">---</option>";
-
-	for(uint8_t index_setting = 0; index_setting < SETTINGS_COUNT; index_setting++)
-	{
-		message_buffer += "<option value=\"";
-		message_buffer += String(settings[index_setting].abbrev);
-		message_buffer += "\">";
-		message_buffer += settings[index_setting].name;
-		message_buffer += "</option>";
-	}
-
-	message_buffer +=
-				"</select>"
-				"<input name=\"value\">"
-				"<input type=\"submit\" value=\"Save\">"
-				"<input type=\"hidden\" name=\"backurl\" id=\"backurl_element\"/>"
-			"</form>"
-			"<p>wifi settings are only applied after restarting the meter</p>"
-			"<h3>frequency / PGA error</h3>"
-			"<p>if the frequency or current (at PGA != 1) is not correct, use these settings to correct them</p>"
-			"<p>the affected metrics are multiplied by (1 + &epsilon; &times; 1/10000)</p>"
-			"<p>to calculate &epsilon;, use &epsilon; = (value_reference / value_measured - 1) &times; 10000 </p>"
-			"<h3>PL_const</h3>"
-			"<p>to calibrate PL_const, measure both power and total energy for a few minutes, find out the rate of change of total energy using a linear regression of total energy over time and compare that rate to the mean power. A larger value for PL_const reduces total power</p>"
-			"<p>PL_const is stored and used as a uint32, but displayed as a int32</p>"
-		"</body>"
-		SCRIPT_SET_BACKURL
-	"</html>";
-
-	httpServer.send(200, "text/html", message_buffer);
-}
-
-void handleSettingsPost()
-{
-	message_buffer.remove(0);
-
-	if((!httpServer.hasArg("id")) || (!httpServer.hasArg("value")))
-	{
-		message_buffer += "bad request (id and value args are missing)";
-		httpServer.send(400, "text/plain", message_buffer);
-	}
-
-	uint8_t index_setting = 0xFF;
-	String id = httpServer.arg("id");
-
-	for(uint8_t index_setting_test = 0; index_setting_test < SETTINGS_COUNT; index_setting_test++)
-	{
-		if(id.equals(settings[index_setting_test].abbrev))
-		{
-			index_setting = index_setting_test;
-			break;
-		}
-	}
-
-	if(index_setting == 0xFF)
-	{
-		message_buffer += "unknown id " + id;
-		httpServer.send(400, "text/plain", message_buffer);
-		return;
-	}
-
-	String value = httpServer.arg("value");
-
-	if(settings[index_setting].type == INTEGER)
-	{
-		int32_t value_int = value.toInt();
-
-		if((value_int < settings[index_setting].min) || (value_int > settings[index_setting].max))
-		{
-			message_buffer += "value is outside of allowed range";
-			httpServer.send(400, "text/plain", message_buffer);
-			return;
-		}
-
-		*((int32_t*)settings[index_setting].value) = value_int;
-		eeprom_write(settings[index_setting].address, value_int);
-	}
-	else if (settings[index_setting].type == STRING)
-	{
-		int length = value.length();
-
-		if ((length < settings[index_setting].min) || (length > settings[index_setting].max))
-		{
-			message_buffer += "value length is outside of allowed range";
-			httpServer.send(400, "text/plain", message_buffer);
-			return;
-		}
-
-		value.getBytes((uint8_t*)settings[index_setting].value, MAX_STRING_LENGTH, 0);
-		eeprom_write(settings[index_setting].address, (uint8_t*)settings[index_setting].value, MAX_STRING_LENGTH);
-	}
-
-	// send user back to settings page, 303 is important so the browser uses the Location header and switches back to a GET request
-	message_buffer += "ok";
-	httpServer.sendHeader("Location", httpServer.arg("backurl"));
-	httpServer.send(303, "text/plain", message_buffer);
-
-	initATM90E26();
-	resetMetrics();
-}
+// TODO: add explanations
