@@ -4,7 +4,19 @@
 #include "settings.h"
 #include "web.h"
 
+// total energy count
+int64_t total_energy;
+// last time taken to read all metrics from the ATM90E36A (in microseconds)
+unsigned long lastMetricReadTime = 0;
+unsigned long lastMetricPushTime = 0;
+// fill value buffers completely before serving metrics to webpage
+uint8_t webpage_wait_counter;
+// index of last value that was written to the buffers
+uint8_t index_lastvalue = 0;
+
 enum ValueType { LSB_UNSIGNED = 1, LSB_COMPLEMENT = 2, NOLSB_UNSIGNED = 3, NOLSB_SIGNED = 4 };
+
+String int64_to_string(int64_t input);
 
 struct Metric {
 	// content of the name tag
@@ -23,6 +35,33 @@ struct Metric {
 	// correct_pga = true -> metric is divided by current PGA setting
 	bool		correct_pga;
 	int32_t *	values;
+
+	float getValue(uint8_t count)
+	{
+		int64_t valuesum = 0;
+		uint8_t bufferpos = index_lastvalue;
+
+		for (uint8_t i = 0; i < count; i++) {
+			valuesum += values[bufferpos];
+
+			if (!bufferpos)
+				bufferpos = SAMPLE_COUNT_MAX;
+			bufferpos--;
+		}
+
+		double value = valuesum * factor / count;
+
+		if (correct_pga)
+			value *= pga_correction_factor;
+
+		if (type == LSB_COMPLEMENT || type == LSB_UNSIGNED)
+			value /= (1 << 8);
+
+		if (address == Freq)
+			value *= (1 + ((double)setting_frequency_correct.value) / 10000.0);
+
+		return value;
+	}
 };
 
 struct Metric metrics[] = {
@@ -40,35 +79,29 @@ struct Metric metrics[] = {
 };
 #define METRIC_COUNT (sizeof(metrics) / sizeof(metrics[0]))
 
-// total energy count
-int64_t total_energy;
-// last time taken to read all metrics from the ATM90E36A (in microseconds)
-unsigned long lastMetricReadTime = 0;
-unsigned long lastMetricPushTime = 0;
-// fill value buffers completely before serving metrics to webpage
-uint8_t webpage_wait_counter = SAMPLE_COUNT_MAX + 1;
-// index of next value to be replaced
-uint8_t index_nextvalue = 0;
-
 void initMetrics()
 {
 	for (uint8_t index_metric = 0; index_metric < METRIC_COUNT; index_metric++)
 		metrics[index_metric].values = (int32_t *)malloc(SAMPLE_COUNT_MAX * sizeof(int32_t));
+
 	resetMetrics();
 }
 
 void resetMetrics()
 {
-	webpage_wait_counter = setting_sample_count.value + 1;
+	webpage_wait_counter = setting_sample_count.value + 2;
 	total_energy = 0;
-	index_nextvalue = 0;
+	index_lastvalue = 0;
 }
 
-void getMetrics(bool all, int16_t bufferpos)
+void getMetrics(bool all, uint8_t count)
 {
 	message_buffer.remove(0);
 
-	String preamble = INFLUX_PREAMBLE;
+	message_buffer += setting_metric_name.value;
+	message_buffer += ",loc=";
+	message_buffer += setting_location_tag.value;
+	message_buffer += " ";
 
 	for (uint8_t index_metric = 0; index_metric < METRIC_COUNT; index_metric++) {
 		struct Metric metric = metrics[index_metric];
@@ -76,39 +109,48 @@ void getMetrics(bool all, int16_t bufferpos)
 		if ((!all) && (!metric.showInMain))
 			continue;
 
-		int64_t valuesum = 0;
-
-
-		double value;
-
-		if (bufferpos < 0) {
-			int *valueptr = metric.values;
-
-			for (uint8_t i = 0; i < setting_sample_count.value; i++)
-				valuesum += *(valueptr++);
-
-			value = valuesum * metric.factor / setting_sample_count.value;
-		} else {
-			value = metric.values[bufferpos] * metric.factor;
-		}
-
-		if (metric.correct_pga)
-			value *= pga_correction_factor;
-
-		if (metric.type == LSB_COMPLEMENT || metric.type == LSB_UNSIGNED)
-			value /= (1 << 8);
-
-		if (metric.address == Freq)
-			value *= (1 + ((double)setting_frequency_correct.value) / 10000.0);
-
-		message_buffer += preamble + metric.name;
-		message_buffer += " value=" + String(value, metric.decimals) + "\n";
+		message_buffer += metric.name;
+		message_buffer += "=";
+		message_buffer += String(metric.getValue(count), metric.decimals);
+		message_buffer += ",";
 	}
 
-	message_buffer += preamble + "total_energy value=" + String(pga_correction_factor * ((double)total_energy) / (1000 * 10), 4) + "\n";
+	message_buffer += "energy_total=" + String(pga_correction_factor * ((double)total_energy) / (1000 * 10), 4) + "\n";
 }
 
-const uint8_t total_energy_write_interval = 50;
+void handleMetricsInternal(bool all)
+{
+	if (webpage_wait_counter) {
+		httpServer.send(400, "text/plain", "please wait for buffers to fill");
+		return;
+	}
+
+	getMetrics(all, setting_sample_count.value);
+
+	httpServer.send(200, "text/plain; version=0.0.4", message_buffer);
+}
+
+void handleMetrics()
+{
+	handleMetricsInternal(false);
+}
+
+void handleAllMetrics()
+{
+	handleMetricsInternal(true);
+}
+
+void pushMetrics()
+{
+	WiFiClient client;
+
+	if (client.connect(setting_push_ipaddr.value, setting_push_port.value)) {
+		getMetrics(false, 1);
+		client.println(message_buffer);
+		client.flush();
+		client.stop();
+	}
+}
 
 void readMetrics()
 {
@@ -119,6 +161,9 @@ void readMetrics()
 
 	total_energy += read_register(APenergy);
 	total_energy -= read_register(ANenergy);
+
+	if (++index_lastvalue >= SAMPLE_COUNT_MAX)
+		index_lastvalue = 0;
 
 	for (uint8_t index_metric = 0; index_metric < METRIC_COUNT; index_metric++) {
 		struct Metric metric = metrics[index_metric];
@@ -146,49 +191,14 @@ void readMetrics()
 			value = (unsigned short)read_register(metric.address);
 		}
 
-		metrics[index_metric].values[index_nextvalue] = value;
+		metrics[index_metric].values[index_lastvalue] = value;
 	}
 
 	unsigned long readendtime = micros();
 	lastMetricReadTime = readendtime - starttime;
 
-	if (setting_push_enable.value) {
-		WiFiClient client;
-
-		if (client.connect(setting_push_ipaddr.value, setting_push_port.value)) {
-			getMetrics(false, index_nextvalue);
-			client.println(message_buffer);
-			client.flush();
-			client.stop();
-		}
-	}
+	if (setting_push_enable.value)
+		pushMetrics();
 
 	lastMetricPushTime = micros() - readendtime;
-
-	if (++index_nextvalue >= setting_sample_count.value)
-		index_nextvalue = 0;
-}
-
-
-
-void handleMetricsInternal(bool all)
-{
-	if (webpage_wait_counter) {
-		httpServer.send(400, "text/plain", "please wait for buffers to fill");
-		return;
-	}
-
-	getMetrics(all, -1);
-
-	httpServer.send(200, "text/plain; version=0.0.4", message_buffer);
-}
-
-void handleMetrics()
-{
-	handleMetricsInternal(false);
-}
-
-void handleAllMetrics()
-{
-	handleMetricsInternal(true);
 }

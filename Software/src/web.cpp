@@ -1,5 +1,6 @@
 #include "Arduino.h"
 
+#include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
 #include <ESP8266HTTPUpdateServer.h>
@@ -18,15 +19,17 @@ void handleStatus()
 {
 	message_buffer.remove(0);
 
-	String preable = INFLUX_PREAMBLE;
+	String preamble = "debug,host=";
+	preamble += setting_wifi_hostname.value;
+	preamble += ",name=";
 
-	message_buffer += preable + "spi_read_time_us value=" + String(lastMetricReadTime) + "\n";
-	message_buffer += preable + "push_time_us value=" + String(lastMetricPushTime) + "\n";
-	message_buffer += preable + "free_heap_kbytes value=" + String(((float)ESP.getFreeHeap()) / 1024, 3) + "\n";
-	message_buffer += preable + "logic_voltage value=" + String(((float)ESP.getVcc()) / 1000, 2) + "\n";
-	message_buffer += preable + "uptime value=" + String(uptime_seconds) + "\n";
-	message_buffer += preable + "loop_duration_avg_us value=" + String(loop_duration, 0) + "\n";
-	message_buffer += preable + "loop_duration_max_us value=" + String(loop_duration_max, 0) + "\n";
+	message_buffer += preamble + "spi_read_time_us value=" + String(lastMetricReadTime) + "\n";
+	message_buffer += preamble + "push_time_us value=" + String(lastMetricPushTime) + "\n";
+	message_buffer += preamble + "free_heap_kbytes value=" + String(((float)ESP.getFreeHeap()) / 1024, 3) + "\n";
+	message_buffer += preamble + "logic_voltage value=" + String(((float)ESP.getVcc()) / 1000, 2) + "\n";
+	message_buffer += preamble + "uptime value=" + String(uptime_seconds) + "\n";
+	message_buffer += preamble + "loop_duration_avg_us value=" + String(loop_duration, 0) + "\n";
+	message_buffer += preamble + "loop_duration_max_us value=" + String(loop_duration_max, 0) + "\n";
 
 	httpServer.send(200, "text/plain; version=0.0.4", message_buffer);
 }
@@ -54,7 +57,6 @@ void handleRoot()
 		"<a href=\"status\">system status</a><br/>"
 		"<a href=\"info\">system info</a><br/>"
 		"<br/>"
-		//"<a href=\"settings\">all settings</a><br/>"
 		"<a href=\"settings/network\">network settings</a><br/>"
 		"<a href=\"settings/metrics\">report settings</a><br/>"
 		"<a href=\"settings/calibration\">calibration settings</a><br/>"
@@ -88,6 +90,7 @@ void handleInfo()
 	message_buffer += "programmed flash chip size:     " + String(ESP.getFlashChipSize()) + " bytes\n";
 	message_buffer += "real flash chip size (from id): " + String(ESP.getFlashChipRealSize()) + " bytes\n";
 	message_buffer += "firmware MD5: " + ESP.getSketchMD5() + "\n";
+	message_buffer += "ip address: " + WiFi.localIP().toString() + "\n";
 
 	httpServer.send(200, "text/plain", message_buffer);
 }
@@ -99,22 +102,29 @@ void handleSettingsPost()
 
 void handleSettingsGetAll()
 {
-	settings_manager.handleSettingsGet();
+	settings_manager.handleSettingsGet(0xFF);
 }
 
 void handleSettingsGetCalibration()
 {
-	settings_manager.handleSettingsGet(SETTINGS_GROUP_CALIBRATION);
+	settings_manager.handleSettingsGet(SETTINGS_GROUP_CALIBRATION, PSTR("Calibration Settings"),
+					   PSTR("<h3>frequency / PGA error</h3>"
+						"<p>if the frequency or current (at PGA != 1) is not correct, use these settings to correct them</p>"
+						"<p>the affected metrics are multiplied by (1 + &epsilon; &times; 1/10000)</p>"
+						"<p>to calculate &epsilon;, use &epsilon; = (value_reference / value_measured - 1) &times; 10000 </p>"
+						"<h3>PL_const</h3>"
+						"<p>to calibrate PL_const, measure both power and total energy for a few minutes, find out the rate of change of total energy using a linear regression of total energy over time and compare that rate to the mean power. A larger value for PL_const reduces total power</p>"
+						));
 }
 
 void handleSettingsGetMetrics()
 {
-	settings_manager.handleSettingsGet(SETTINGS_GROUP_METRICS);
+	settings_manager.handleSettingsGet(SETTINGS_GROUP_METRICS, PSTR("Report Settings"));
 }
 
 void handleSettingsGetNetwork()
 {
-	settings_manager.handleSettingsGet(SETTINGS_GROUP_NETWORK);
+	settings_manager.handleSettingsGet(SETTINGS_GROUP_NETWORK, PSTR("Network Settings"), PSTR("<p>wifi settings are only applied after restarting the meter</p>"));
 }
 
 void initWeb()

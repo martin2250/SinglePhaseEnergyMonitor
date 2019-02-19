@@ -110,5 +110,7 @@ void loop(void)
 	unsigned long loop_duration_ul = micros() - loop_start;
 
 	loop_duration = 0.99 * loop_duration + 0.01 * loop_duration_ul;
-	loop_duration_max = max(loop_duration_max, (double)loop_duration_ul);
+
+	if (uptime_seconds > 1)
+		loop_duration_max = max(loop_duration_max, (double)loop_duration_ul);
 }
