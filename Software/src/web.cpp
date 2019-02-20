@@ -12,6 +12,7 @@
 
 ESP8266WebServer httpServer(80);
 ESP8266HTTPUpdateServer httpUpdater;
+WiFiClient pushClient;
 
 String message_buffer = "";
 
@@ -119,12 +120,22 @@ void handleSettingsGetCalibration()
 
 void handleSettingsGetMetrics()
 {
-	settings_manager.handleSettingsGet(SETTINGS_GROUP_METRICS, PSTR("Report Settings"));
+	settings_manager.handleSettingsGet(SETTINGS_GROUP_METRICS, PSTR("Report Settings"),
+					   PSTR("<h3>sample buffer</h3>"
+						"<p>the sample buffer is only used for the /metrics http endpoint, pushed metrics are not buffered</p>"
+						"<h3>metrics pushing</h3>"
+						"<p>metrics are pushed to a tcp listener at the selected ip and port in influxdb line protocol</p>"
+						"<p>metrics pushing is disabled when the device is reset</p>"
+						"<p>changes to push address and port are only applied immediately after enabling metrics pushing</p>"
+						));
 }
 
 void handleSettingsGetNetwork()
 {
-	settings_manager.handleSettingsGet(SETTINGS_GROUP_NETWORK, PSTR("Network Settings"), PSTR("<p>wifi settings are only applied after restarting the meter</p>"));
+	settings_manager.handleSettingsGet(SETTINGS_GROUP_NETWORK, PSTR("Network Settings"),
+					   PSTR("<p>network settings are only applied after restarting the meter</p>"
+						"<p>the integrated access point is toggled on and off by resetting the device</p>"
+						));
 }
 
 void initWeb()

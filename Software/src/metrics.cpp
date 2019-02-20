@@ -142,13 +142,10 @@ void handleAllMetrics()
 
 void pushMetrics()
 {
-	WiFiClient client;
-
-	if (client.connect(setting_push_ipaddr.value, setting_push_port.value)) {
+	if (pushClient.connected()) {
 		getMetrics(false, 1);
-		client.println(message_buffer);
-		client.flush();
-		client.stop();
+		pushClient.println(message_buffer);
+		pushClient.flush();
 	}
 }
 

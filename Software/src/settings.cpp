@@ -40,6 +40,12 @@ Setting_Bool setting_push_enable;
 Setting_IPAddress setting_push_ipaddr;
 Setting_Int32 setting_push_port;
 
+void setting_meter_changed()
+{
+	initATM90E26();
+	resetMetrics();
+}
+
 void initSettings()
 {
 	settings_manager.readfunc = eeprom_read;
@@ -62,6 +68,7 @@ void initSettings()
 	setting_current_pga_gain.name = PSTR("pga gain index");
 	setting_current_pga_gain.min = 0;
 	setting_current_pga_gain.max = 4;
+	setting_current_pga_gain.on_change = setting_meter_changed;
 	settings_manager.settings.push_back(&setting_current_pga_gain);
 
 	/* -------------------------------------------------------------- */
@@ -73,6 +80,7 @@ void initSettings()
 	setting_voltage_gain.val_default = 22000;
 	setting_voltage_gain.min = 0;
 	setting_voltage_gain.max = 0xFFFF;
+	setting_voltage_gain.on_change = setting_meter_changed;
 	settings_manager.settings.push_back(&setting_voltage_gain);
 
 	setting_current_gain.groups = SETTINGS_GROUP_CALIBRATION;
@@ -82,6 +90,7 @@ void initSettings()
 	setting_current_gain.val_default = 17500;
 	setting_current_gain.min = 0;
 	setting_current_gain.max = 0xFFFF;
+	setting_current_gain.on_change = setting_meter_changed;
 	settings_manager.settings.push_back(&setting_current_gain);
 	/* -------------------------------------------------------------- */
 
@@ -92,6 +101,7 @@ void initSettings()
 	setting_pl_const_24.val_default = 10000000;
 	setting_pl_const_24.min = 0;
 	setting_pl_const_24.max = 0xFFFFFFFF;
+	setting_pl_const_24.on_change = setting_meter_changed;
 	settings_manager.settings.push_back(&setting_pl_const_24);
 
 	/* -------------------------------------------------------------- */
@@ -121,6 +131,7 @@ void initSettings()
 		setting_pga_gain_error[i].address = 0x28 + i;
 		setting_pga_gain_error[i].min = -10000;
 		setting_pga_gain_error[i].max = 10000;
+		setting_pga_gain_error[i].on_change = setting_meter_changed;
 		settings_manager.settings.push_back(setting_pga_gain_error + i);
 	}
 
@@ -132,6 +143,7 @@ void initSettings()
 	setting_voltage_offset.name = PSTR("voltage offset");
 	setting_voltage_offset.min = 0;
 	setting_voltage_offset.max = 0xFFFF;
+	setting_voltage_offset.on_change = setting_meter_changed;
 	settings_manager.settings.push_back(&setting_voltage_offset);
 
 	setting_current_offset.groups = SETTINGS_GROUP_CALIBRATION;
@@ -140,6 +152,7 @@ void initSettings()
 	setting_current_offset.name = PSTR("current offset");
 	setting_current_offset.min = 0;
 	setting_current_offset.max = 0xFFFF;
+	setting_current_offset.on_change = setting_meter_changed;
 	settings_manager.settings.push_back(&setting_current_offset);
 
 	setting_act_power_offset.groups = SETTINGS_GROUP_CALIBRATION;
@@ -148,6 +161,7 @@ void initSettings()
 	setting_act_power_offset.name = PSTR("active power offset");
 	setting_act_power_offset.min = 0;
 	setting_act_power_offset.max = 0xFFFF;
+	setting_act_power_offset.on_change = setting_meter_changed;
 	settings_manager.settings.push_back(&setting_act_power_offset);
 
 	setting_rct_power_offset.groups = SETTINGS_GROUP_CALIBRATION;
@@ -156,6 +170,7 @@ void initSettings()
 	setting_rct_power_offset.name = PSTR("reactive power offset");
 	setting_rct_power_offset.min = 0;
 	setting_rct_power_offset.max = 0xFFFF;
+	setting_rct_power_offset.on_change = setting_meter_changed;
 	settings_manager.settings.push_back(&setting_rct_power_offset);
 
 	/* -------------------------------------------------------------- */
@@ -264,5 +279,3 @@ void initSettings()
 
 	settings_manager.load();
 }
-
-// TODO: add explanations

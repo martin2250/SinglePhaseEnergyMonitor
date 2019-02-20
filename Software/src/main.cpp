@@ -40,6 +40,9 @@ void setup(void)
 	if (resetInfo->reason == REASON_EXT_SYS_RST) {
 		ESP.rtcUserMemoryRead(0, (uint32_t *)&enableAP, sizeof(enableAP));
 		enableAP = !enableAP;
+
+		setting_push_enable.value = false;
+		settings_manager.save(&setting_push_enable);
 	}
 	ESP.rtcUserMemoryWrite(0, (uint32_t *)&enableAP, sizeof(enableAP));
 
@@ -89,12 +92,12 @@ void loop(void)
 {
 	static unsigned long last_spi_read_time = millis();
 	static unsigned long last_uptime_update = millis();
+	static unsigned long last_pushClient_attempt = 0;
 
 	unsigned long loop_start = micros();
+	unsigned long now = millis();
 
 	httpServer.handleClient();
-
-	unsigned long now = millis();
 
 	if ((now - last_spi_read_time) > SAMPLE_INTERVAL_MS) {
 		last_spi_read_time += SAMPLE_INTERVAL_MS;
@@ -105,6 +108,16 @@ void loop(void)
 	if ((now - last_uptime_update) > 1000) {
 		uptime_seconds++;
 		last_uptime_update += 1000;
+	}
+
+	if (setting_push_enable.value) {
+		// try to connect to push receiver every 10 seconds
+		if ((!pushClient.connected()) && ((now - last_pushClient_attempt) > 10000)) {
+			pushClient.connect(setting_push_ipaddr.value, setting_push_port.value);
+			last_pushClient_attempt = now;
+		}
+	} else if (pushClient.connected()) {
+		pushClient.stop();
 	}
 
 	unsigned long loop_duration_ul = micros() - loop_start;
