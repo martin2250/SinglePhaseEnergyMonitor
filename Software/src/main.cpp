@@ -56,6 +56,8 @@ void setup(void)
 		WiFi.mode(WIFI_STA);
 	}
 
+	WiFi.setAutoReconnect(true);
+
 	if ((strlen(setting_wifi_ssid.value) > 1) && (strlen(setting_wifi_psk.value) >= 8)) {
 		Serial.print("connecting to ");
 		Serial.println(setting_wifi_ssid.value);
